@@ -29,7 +29,6 @@ import org.eligosource.eventsourced.core._
  *
  *  - `withProcessorStructure`
  *  - `withSequenceStructure`
- *  - `withThrottledReplay`
  *
  * Journal actors can be created from a configuration object as follows:
  *
@@ -54,10 +53,6 @@ import org.eligosource.eventsourced.core._
  * @param checksum `true` if checksums are verified on read. Default is `false`.
  * @param processorStructured `true` if entries are primarily ordered by processor
  *        id, `false` if entries are ordered by sequence number.  Default is `true`.
- * @param throttleAfter `0` if replay throttling is turned off, or a positive integer
- *        to `throttleFor` after the specified number of replayed event messages.
- * @param throttleFor Suspend replay for specified duration after `throttleAfter`
- *        replayed event messages.
  */
 case class LeveldbJournalProps(
   dir: File,
@@ -65,9 +60,7 @@ case class LeveldbJournalProps(
   dispatcherName: Option[String] = None,
   fsync: Boolean = false,
   checksum: Boolean = false,
-  processorStructured: Boolean = true,
-  throttleAfter: Int = 0,
-  throttleFor: FiniteDuration = 100 milliseconds) extends JournalProps {
+  processorStructured: Boolean = true) extends JournalProps {
 
   /**
    *  Returns `false` if entries are primarily ordered by processor id,
@@ -75,12 +68,6 @@ case class LeveldbJournalProps(
    */
   def sequenceStructured: Boolean =
     !processorStructured
-
-  /**
-   * Returns `true` if replay will be throttled. Only for `processorStructured == true`.
-   */
-  def throttledReplay =
-    processorStructured && (throttleAfter != 0)
 
   /**
    * Returns a new `LeveldbJournalProps` with specified journal actor name.
@@ -142,21 +129,9 @@ case class LeveldbJournalProps(
   def withSequenceStructure =
     copy(processorStructured = false)
 
-  /**
-   * Returns a new `LeveldbJournalProps` with specified replay throttling settings. Can be used
-   * to avoid growing of mailboxes of slow processors during replay. Only has effect if
-   * `processorStructured == true`.
-   */
-  def withThrottledReplay(throttleAfter: Int, throttleFor: FiniteDuration = 100 milliseconds) =
-    copy(throttleAfter = throttleAfter, throttleFor = throttleFor)
-
   def journal: Actor = {
-    import LeveldbReplay._
-
-    if (throttledReplay) {
-      new LeveldbJournalPS(this, throttledReplayStrategy)
-    } else if (processorStructured) {
-      new LeveldbJournalPS(this, defaultReplayStrategy)
+    if (processorStructured) {
+      new LeveldbJournalPS(this)
     } else {
       new LeveldbJournalSS(this)
     }

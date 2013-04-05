@@ -97,7 +97,6 @@ private [eventsourced] class LeveldbJournalSS(props: LeveldbJournalProps) extend
         case _ => {}
       }
     }
-    sender ! ReplayDone
   }
 
   def executeReplayInMsgs(cmd: ReplayInMsgs, p: Message => Unit) {

@@ -56,9 +56,11 @@ trait SynchronousWriteReplaySupport extends Actor {
     }
     case BatchReplayInMsgs(replays) => {
       executeBatchReplayInMsgs(replays, (msg, target) => target tell (Written(msg), deadLetters))
+      sender ! ReplayDone
     }
     case cmd: ReplayInMsgs => {
       executeReplayInMsgs(cmd, msg => cmd.target tell (Written(msg), deadLetters))
+      sender ! ReplayDone
     }
     case cmd: ReplayOutMsgs => {
       executeReplayOutMsgs(cmd, msg => cmd.target tell (Written(msg), deadLetters))
@@ -138,10 +140,7 @@ trait SynchronousWriteReplaySupport extends Actor {
   def executeDeleteOutMsg(cmd: DeleteOutMsg)
 
   /**
-   * Instructs a journal provider to batch-replay input messages. The provider must
-   * reply to the sender with [[org.eligosource.eventsourced.core.Journal.ReplayDone]]
-   * when all replayed messages have been added to the corresponding replay targets'
-   * mailboxes.
+   * Instructs a journal provider to batch-replay input messages.
    *
    * @param cmds command batch to be executed by the journal provider.
    * @param p function to be called by the provider for every replayed input message.
@@ -156,10 +155,7 @@ trait SynchronousWriteReplaySupport extends Actor {
   def executeBatchReplayInMsgs(cmds: Seq[ReplayInMsgs], p: (Message, ActorRef) => Unit)
 
   /**
-   * Instructs a journal provider to replay input messages. The provider must
-   * reply to the sender with [[org.eligosource.eventsourced.core.Journal.ReplayDone]]
-   * when all replayed messages have been added to the corresponding replay target's
-   * mailbox.
+   * Instructs a journal provider to replay input messages.
    *
    * @param cmd command to be executed by the journal provider.
    * @param p function to be called by the provider for each replayed input message.

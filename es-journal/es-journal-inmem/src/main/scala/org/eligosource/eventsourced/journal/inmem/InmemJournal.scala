@@ -52,12 +52,10 @@ private [eventsourced] class InmemJournal extends SynchronousWriteReplaySupport 
 
   def executeBatchReplayInMsgs(cmds: Seq[ReplayInMsgs], p: (Message, ActorRef) => Unit) {
     cmds.foreach(cmd => replay(cmd.processorId, 0, cmd.fromSequenceNr, msg => p(msg, cmd.target)))
-    sender ! ReplayDone
   }
 
   def executeReplayInMsgs(cmd: ReplayInMsgs, p: Message => Unit) {
     replay(cmd.processorId, 0, cmd.fromSequenceNr, p)
-    sender ! ReplayDone
   }
 
   def executeReplayOutMsgs(cmd: ReplayOutMsgs, p: Message => Unit) {

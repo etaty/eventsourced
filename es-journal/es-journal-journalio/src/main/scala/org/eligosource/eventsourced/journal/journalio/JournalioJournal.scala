@@ -93,7 +93,6 @@ private [eventsourced] class JournalioJournal(props: JournalioJournalProps) exte
         case _ => {}
       }
     }
-    sender ! ReplayDone
   }
 
   def executeReplayInMsgs(cmd: ReplayInMsgs, p: Message => Unit) {
