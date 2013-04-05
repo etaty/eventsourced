@@ -179,30 +179,30 @@ trait AsynchronousWriteReplaySupport extends Actor {
       }
       case IsolatedReplay(cmd @ BatchReplayInMsgs(replays), toSequenceNr) => {
         replayer.executeBatchReplayInMsgs(replays, (msg, target) => target tell (Written(msg), deadLetters), sdr, toSequenceNr) onComplete {
-          case Success(_) => self ! (seqnr + 1L, IsolatedReplayDone)
-          case Failure(e) => self ! (seqnr + 1L, IsolatedReplayFailed(cmd, e))
+          case Success(_) => { self ! (seqnr + 1L, ReplayDone); sdr ! ReplayDone }
+          case Failure(e) => { self ! (seqnr + 1L, ReplayFailed(cmd, e)) }
         }
       }
       case IsolatedReplay(cmd: ReplayInMsgs, toSequenceNr) => {
         replayer.executeReplayInMsgs(cmd, msg => cmd.target tell (Written(msg), deadLetters), sdr, toSequenceNr) onComplete {
-          case Success(_) => self ! (seqnr + 1L, IsolatedReplayDone)
-          case Failure(e) => self ! (seqnr + 1L, IsolatedReplayFailed(cmd, e))
+          case Success(_) => { self ! (seqnr + 1L, ReplayDone); sdr ! ReplayDone }
+          case Failure(e) => { self ! (seqnr + 1L, ReplayFailed(cmd, e)) }
         }
       }
       case IsolatedReplay(cmd: ReplayOutMsgs, toSequenceNr) => {
         replayer.executeReplayOutMsgs(cmd, msg => cmd.target tell (Written(msg), deadLetters), sdr, toSequenceNr) onComplete {
-          case Success(_) => self ! (seqnr + 1L, IsolatedReplayDone)
-          case Failure(e) => self ! (seqnr + 1L, IsolatedReplayFailed(cmd, e))
+          case Success(_) => self ! (seqnr + 1L, ReplayDone)
+          case Failure(e) => self ! (seqnr + 1L, ReplayFailed(cmd, e))
         }
       }
       case BatchDeliverOutMsgs(channels) => {
         channels.foreach(_ ! Deliver)
         sdr ! DeliveryDone
       }
-      case IsolatedReplayDone => {
+      case ReplayDone => {
         // nothing to do ...
       }
-      case e: IsolatedReplayFailed => {
+      case e: ReplayFailed => {
         context.system.eventStream.publish(e)
       }
       case e: WriteFailed => {
@@ -226,7 +226,6 @@ trait AsynchronousWriteReplaySupport extends Actor {
 
 object AsynchronousWriteReplaySupport {
   case class WriteFailed(cmd: Any, cause: Throwable)
+  case class ReplayFailed(replayCmd: Any, cause: Throwable)
   case class IsolatedReplay(replayCmd: Any, toSequencerNr: Long)
-  case class IsolatedReplayFailed(replayCmd: Any, cause: Throwable) // remane to ReplayFailed
-  case object IsolatedReplayDone // replace by ReplayDone?
 }

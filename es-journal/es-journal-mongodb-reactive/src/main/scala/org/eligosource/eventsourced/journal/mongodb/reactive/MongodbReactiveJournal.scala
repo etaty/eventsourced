@@ -90,16 +90,16 @@ private [eventsourced] class MongodbReactiveJournal(props: MongodbReactiveJourna
   def replayer = new Replayer {
 
     def executeBatchReplayInMsgs(cmds: Seq[ReplayInMsgs], p: (Message, ActorRef) => Unit, sdr: ActorRef, toSequenceNr: Long): Future[Any] = {
-      Future.sequence(cmds.map(cmd => replay(
+      Future.sequence[Any, Seq](cmds.map(cmd => replay(
         Key(cmd.processorId, sequenceNr = cmd.fromSequenceNr),
         Key(cmd.processorId, sequenceNr = toSequenceNr),
-        msg => p(msg, cmd.target)))) andThen { case _ => sdr ! ReplayDone }
+        msg => p(msg, cmd.target))))
     }
 
     def executeReplayInMsgs(cmd: ReplayInMsgs, p: (Message) => Unit, sdr: ActorRef, toSequenceNr: Long): Future[Any] = {
       replay(
         Key(cmd.processorId, sequenceNr = cmd.fromSequenceNr),
-        Key(cmd.processorId, sequenceNr = toSequenceNr), p) andThen { case _ => sdr ! ReplayDone }
+        Key(cmd.processorId, sequenceNr = toSequenceNr), p)
     }
 
     def executeReplayOutMsgs(cmd: ReplayOutMsgs, p: (Message) => Unit, sdr: ActorRef, toSequenceNr: Long): Future[Any] = {

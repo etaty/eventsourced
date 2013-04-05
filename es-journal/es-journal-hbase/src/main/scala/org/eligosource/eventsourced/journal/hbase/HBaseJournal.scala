@@ -108,15 +108,15 @@ private [hbase] class HBaseJournal(props: HBaseJournalProps) extends Asynchronou
 
   def replayer = new Replayer {
     def executeBatchReplayInMsgs(cmds: Seq[ReplayInMsgs], p: (Message, ActorRef) => Unit, sdr: ActorRef, toSequenceNr: Long): Future[Any] = {
-      Future.sequence(cmds.map(cmd => scan(
+      Future.sequence[Any, Seq](cmds.map(cmd => scan(
         InMsgKey(-1, cmd.processorId, cmd.fromSequenceNr),
-        InMsgKey(-1, cmd.processorId, toSequenceNr), msg => p(msg, cmd.target)))) andThen { case _ => sdr ! ReplayDone }
+        InMsgKey(-1, cmd.processorId, toSequenceNr), msg => p(msg, cmd.target))))
     }
 
     def executeReplayInMsgs(cmd: ReplayInMsgs, p: (Message) => Unit, sdr: ActorRef, toSequenceNr: Long): Future[Any] = {
       scan(
         InMsgKey(-1, cmd.processorId, cmd.fromSequenceNr),
-        InMsgKey(-1, cmd.processorId, toSequenceNr), p) andThen { case _ => sdr ! ReplayDone }
+        InMsgKey(-1, cmd.processorId, toSequenceNr), p)
     }
 
     def executeReplayOutMsgs(cmd: ReplayOutMsgs, p: (Message) => Unit, sdr: ActorRef, toSequenceNr: Long): Future[Any] = {
