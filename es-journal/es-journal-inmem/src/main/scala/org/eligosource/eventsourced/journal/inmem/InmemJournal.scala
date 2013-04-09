@@ -29,6 +29,7 @@ private [eventsourced] class InmemJournal extends SynchronousWriteReplaySupport 
   import Journal._
 
   var redoMap = SortedMap.empty[Key, Any]
+  var snapshots = Map.empty[Int, Snapshot]
 
   def executeWriteInMsg(cmd: WriteInMsg) {
     redoMap = redoMap + (Key(cmd.processorId, 0, counter, 0) -> cmd.message.clearConfirmationSettings)
@@ -60,6 +61,15 @@ private [eventsourced] class InmemJournal extends SynchronousWriteReplaySupport 
 
   def executeReplayOutMsgs(cmd: ReplayOutMsgs, p: Message => Unit) {
     replay(Int.MaxValue, cmd.channelId, cmd.fromSequenceNr, p)
+  }
+
+  override def loadSnapshot(processorId: Int) = {
+    snapshots.get(processorId)
+  }
+
+  override def saveSnapshot(snapshot: Snapshot) = {
+    snapshots = snapshots + (snapshot.processorId -> snapshot)
+    super.saveSnapshot(snapshot)
   }
 
   def storedCounter = counter

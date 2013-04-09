@@ -133,6 +133,31 @@ class EventsourcingExtension(system: ExtendedActorSystem) extends Extension {
   }
 
   /**
+   * Extension-specific factory for `ReplayParams` sequences.
+   */
+  object replayParams {
+    def allFromScratch: Seq[ReplayParams] =
+      processors.keys.map(pid => ReplayParams(pid)).toSeq
+
+    def allWithSnapshot: Seq[ReplayParams] =
+      processors.keys.map(pid => ReplayParams(pid, withSnapshot = true)).toSeq
+
+    def selectedWith(f: (Int) => Option[Long]): Seq[ReplayParams] = processors.collect {
+      case (pid, p) if (f(pid).isDefined) => ReplayParams(pid, f(pid).get, false)
+    } toList
+  }
+
+  def replay(params: Seq[ReplayParams])(implicit timeout: Timeout): Future[Any] = {
+    val replays = params.foldLeft(List.empty[ReplayInMsgs]) {
+      case (acc, prop @ ReplayParams(pid, _, _)) => processors.get(pid) match {
+        case Some(proc) => ReplayInMsgs(prop, proc) :: acc
+        case None       => acc
+      }
+    }
+    journal ? (BatchReplayInMsgs(replays))
+  }
+
+  /**
    * Replays input messages to selected processors. The returned `Future` will be
    * completed when the replayed messages have been added to the selected processor's
    * mailboxes. Any new message sent to any of the selected processors, after successful
@@ -146,11 +171,9 @@ class EventsourcingExtension(system: ExtendedActorSystem) extends Extension {
    *        no message replay will be done for that processor. If it returns `Some(snr)`
    *        message replay will start from sequence number `snr` for that processor.
    */
+  @deprecated("use replay(Seq[ReplayParams])(Timeout)", "0.5")
   def replay(f: (Int) => Option[Long])(implicit timeout: Timeout): Future[Any] = {
-    val replays = processors.collect {
-      case (pid, p) if (f(pid).isDefined) => ReplayInMsgs(pid, f(pid).get, p)
-    }
-    journal ? (BatchReplayInMsgs(replays.toList))
+    replay(replayParams.selectedWith(f))
   }
 
   /**
@@ -174,10 +197,24 @@ class EventsourcingExtension(system: ExtendedActorSystem) extends Extension {
     journal ? BatchDeliverOutMsgs(channels)
   }
 
+  def snapshot(processorIds: Set[Int])(implicit timeout: Timeout): Future[Set[SnapshotSaved]] = {
+    import system.dispatcher
+
+    val selected = processors filter {
+      case (k, _) => processorIds.contains(k)
+    }
+    val commands = selected map {
+      case (k, v) => RequestSnapshot(k, v)
+    }
+
+    Future.sequence(commands.map(journal.ask(_).mapTo[SnapshotSaved]).toSet)
+  }
+
   /**
    * Recovers all processors and channels registered at this extension by
-   * sequentially executing `replay(_ => Some(0))` and then `deliver()`.
-   * Replay is done with no lower bound (i.e. with all messages in the journal).
+   * sequentially executing `replay(replayParams.allFromScratch)` and then
+   * `deliver()`. Replay is done with no lower bound (i.e. with all messages in
+   * the journal) and no snapshot.
    *
    * This method waits for replayed messages being added to processor mailboxes but
    * does not wait for replayed input messages being processed. However, any new message
@@ -191,12 +228,31 @@ class EventsourcingExtension(system: ExtendedActorSystem) extends Extension {
    * @throws TimeoutException if replay doesn't complete within the specified duration.
    */
   def recover(waitAtMost: FiniteDuration = 1 minute) {
-    recover(_ => Some(0), waitAtMost)
+    recover(replayParams.allFromScratch, waitAtMost)
+  }
+
+  def recover(params: Seq[ReplayParams]) {
+    recover(params, 1 minute)
+  }
+
+  def recover(params: Seq[ReplayParams], waitAtMost: FiniteDuration) {
+    implicit val timeout = Timeout(waitAtMost)
+    import system.dispatcher
+    val c = for {
+      _ <- replay(params)
+      _ <- deliver()
+    } yield ()
+
+    Try(Await.result(c, waitAtMost)) match {
+      case Success(_) => ()
+      case Failure(e: TimeoutException) => throw new TimeoutException("recovery could not be completed within %s" format waitAtMost)
+      case Failure(e) =>                   throw e
+    }
   }
 
   /**
    * Recovers selected processors and all channels registered at this extension by
-   * sequentially executing `replay(f)` and then `deliver()`.
+   * executing `recover(replayParams.selectedWith(f))`.
    *
    * This method waits for replayed messages being added to processor mailboxes but
    * does not wait for replayed input messages being processed. However, any new message
@@ -212,19 +268,9 @@ class EventsourcingExtension(system: ExtendedActorSystem) extends Extension {
    * @param waitAtMost  wait for the specified duration for the replay to complete.
    * @throws TimeoutException if replay doesn't complete within the specified duration.
    */
+  @deprecated("use recover(Seq[ReplayParams], FiniteDuration)", "0.5")
   def recover(f: (Int) => Option[Long], waitAtMost: FiniteDuration) {
-    implicit val timeout = Timeout(waitAtMost)
-    import system.dispatcher
-    val c = for {
-      _ <- replay(f)
-      _ <- deliver()
-    } yield ()
-
-    Try(Await.result(c, waitAtMost)) match {
-      case Success(_) => ()
-      case Failure(e: TimeoutException) => throw new TimeoutException("recovery could not be completed within %s" format waitAtMost)
-      case Failure(e) =>                   throw e
-    }
+    recover(replayParams.selectedWith(f), waitAtMost)
   }
 
   /**

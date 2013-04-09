@@ -15,6 +15,9 @@
  */
 package org.eligosource.eventsourced.journal.common
 
+import scala.concurrent.Future
+import scala.util._
+
 import akka.actor._
 
 import org.eligosource.eventsourced.core._
@@ -22,6 +25,8 @@ import org.eligosource.eventsourced.core._
 trait SynchronousWriteReplaySupport extends Actor {
   import Channel.Deliver
   import Journal._
+
+  import context.dispatcher
 
   private val deadLetters = context.system.deadLetters
   private var commandListener: Option[ActorRef] = None
@@ -55,11 +60,13 @@ trait SynchronousWriteReplaySupport extends Actor {
       target forward (Looped(msg))
     }
     case BatchReplayInMsgs(replays) => {
-      executeBatchReplayInMsgs(replays, (msg, target) => target tell (Written(msg), deadLetters))
+      val cs = replays.map(offerSnapshot(_))
+      executeBatchReplayInMsgs(cs, (msg, target) => target tell (Written(msg), deadLetters))
       sender ! ReplayDone
     }
     case cmd: ReplayInMsgs => {
-      executeReplayInMsgs(cmd, msg => cmd.target tell (Written(msg), deadLetters))
+      val c = offerSnapshot(cmd)
+      executeReplayInMsgs(c, msg => c.target tell (Written(msg), deadLetters))
       sender ! ReplayDone
     }
     case cmd: ReplayOutMsgs => {
@@ -68,6 +75,16 @@ trait SynchronousWriteReplaySupport extends Actor {
     case BatchDeliverOutMsgs(channels) => {
       channels.foreach(_ ! Deliver)
       sender ! DeliveryDone
+    }
+    case RequestSnapshot(processorId, target) => {
+      target ! SnapshotRequest(processorId, counter - 1L, sender)
+    }
+    case SaveSnapshot(snapshot) => {
+      val sdr = sender
+      saveSnapshot(snapshot) onComplete {
+        case Success(_) => sdr ! SnapshotSaved(snapshot.processorId, snapshot.sequenceNr)
+        case Failure(_) => // TODO
+      }
     }
     case SetCommandListener(cl) => {
       commandListener = cl
@@ -98,6 +115,12 @@ trait SynchronousWriteReplaySupport extends Actor {
    * Returns the last stored counter value.
    */
   protected def storedCounter: Long
+
+  //
+  // EXPERIMENTAL
+  //
+  def loadSnapshot(processorId: Int): Option[Snapshot] = None
+  def saveSnapshot(snapshot: Snapshot): Future[Unit] = Future.successful(())
 
   /**
    * Instructs a journal provider to write an input message.
@@ -187,4 +210,18 @@ trait SynchronousWriteReplaySupport extends Actor {
    */
   protected def stop() = {}
 
+  //
+  // EXPERIMENTAL
+  //
+  private def offerSnapshot(cmd: ReplayInMsgs): ReplayInMsgs = {
+    if (cmd.withSnapshot) loadSnapshot(cmd.processorId) match {
+      case Some(s @ Snapshot(_, snr, state)) => {
+        cmd.target ! SnapshotOffer(s)
+        ReplayInMsgs(ReplayParams(cmd.processorId, snr + 1L, false), cmd.target)
+      }
+      case None => {
+        cmd
+      }
+    } else cmd
+  }
 }

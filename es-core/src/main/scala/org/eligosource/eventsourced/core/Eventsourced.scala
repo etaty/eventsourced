@@ -76,17 +76,26 @@ trait Eventsourced extends Behavior {
     case GetId => {
       sender ! id
     }
-    case Written(msg) => {
-      super.receive(msg.copy(processorId = id))
-    }
     case msg: Message => {
       journal forward WriteInMsg(id, msg, self)
+    }
+    case Snapshot => {
+      journal forward RequestSnapshot(id, self)
+    }
+    case Written(msg) => {
+      super.receive(msg.copy(processorId = id))
     }
     case Looped(CompleteProcessing) => {
       sender ! Completed
     }
     case Looped(msg) => {
       super.receive(msg)
+    }
+    case sr: SnapshotRequest => {
+      super.receive(sr)
+    }
+    case so: SnapshotOffer => {
+      super.receive(so)
     }
     case msg => {
       // won't be written to journal but must be looped through
