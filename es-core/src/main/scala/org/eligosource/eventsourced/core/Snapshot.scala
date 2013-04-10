@@ -17,18 +17,26 @@ package org.eligosource.eventsourced.core
 
 import akka.actor._
 
+trait SnapshotMetadata {
+  def processorId: Int
+  def sequenceNr: Long
+  def timestamp: Long
+}
+
 /** Processor state snapshot */
-case class Snapshot(processorId: Int, sequenceNr: Long, state: Any)
+case class Snapshot(processorId: Int, sequenceNr: Long, timestamp: Long, state: Any) extends SnapshotMetadata {
+  private [eventsourced] def withTimestamp: Snapshot = copy(timestamp = System.currentTimeMillis)
+}
 
 /** Offers a snapshot to a processor during replay */
 case class SnapshotOffer(snapshot: Snapshot)
 
 /** Reply to a `Snapshot` request */
-case class SnapshotSaved(processorId: Int, sequenceNr: Long)
+case class SnapshotSaved(processorId: Int, sequenceNr: Long, timestamp: Long)
 
 /** Requests a processor to provide its current state for storage */
 case class SnapshotRequest(processorId: Int, sequenceNr: Long, requestor: ActorRef) {
   def process(state: Any)(implicit context: ActorContext) = {
-    context.sender.tell(Journal.SaveSnapshot(Snapshot(processorId, sequenceNr, state)), requestor)
+    context.sender.tell(Journal.SaveSnapshot(Snapshot(processorId, sequenceNr, 0L, state)), requestor)
   }
 }

@@ -15,16 +15,19 @@
  */
 package org.eligosource.eventsourced.core
 
-case class ReplayParams(processorId: Int, fromSequenceNr: Long, withSnapshot: Boolean) {
+case class ReplayParams(processorId: Int, fromSequenceNr: Long, withSnapshot: Boolean, p: SnapshotMetadata => Boolean) {
   require(!(withSnapshot && fromSequenceNr > 0), "cannot replay with snapshot when fromSequenceNr > 0")
 }
 
 object ReplayParams {
   def apply(processorId: Int, fromSequenceNr: Long = 0L): ReplayParams =
-    ReplayParams(processorId, fromSequenceNr, false)
+    ReplayParams(processorId, fromSequenceNr, false, _ => false)
+
+  def apply(processorId: Int, p: SnapshotMetadata => Boolean): ReplayParams =
+    ReplayParams(processorId, 0L, true, p)
 
   def apply(processorId: Int, withSnapshot: Boolean): ReplayParams =
-    ReplayParams(processorId, 0L, withSnapshot)
+    ReplayParams(processorId, 0L, withSnapshot, _=> withSnapshot)
 
   def apply(processorId: Int): ReplayParams =
     apply(processorId, false)

@@ -81,8 +81,9 @@ trait SynchronousWriteReplaySupport extends Actor {
     }
     case SaveSnapshot(snapshot) => {
       val sdr = sender
-      saveSnapshot(snapshot) onComplete {
-        case Success(_) => sdr ! SnapshotSaved(snapshot.processorId, snapshot.sequenceNr)
+      val snp = snapshot.withTimestamp
+      saveSnapshot(snp) onComplete {
+        case Success(_) => sdr ! SnapshotSaved(snp.processorId, snp.sequenceNr, snp.timestamp)
         case Failure(_) => // TODO
       }
     }
@@ -116,10 +117,21 @@ trait SynchronousWriteReplaySupport extends Actor {
    */
   protected def storedCounter: Long
 
-  //
-  // EXPERIMENTAL
-  //
-  def loadSnapshot(processorId: Int): Option[Snapshot] = None
+  /**
+   * Loads the latest snapshot for specified processor whose metadata match predicate `p`.
+   *
+   * @param processorId processor id of the snapshot
+   * @param p predicate for selecting saved snapshots
+   * @return youngest snapshots of those selected by `p`, if any.
+   */
+  def loadSnapshot(processorId: Int, p: SnapshotMetadata => Boolean): Option[Snapshot] = None
+
+  /**
+   * Save a snapshot.
+   *
+   * @param snapshot a snapshot.
+   * @return a future that is completed when the snapshot has been successfully saved.
+   */
   def saveSnapshot(snapshot: Snapshot): Future[Unit] = Future.successful(())
 
   /**
@@ -210,14 +222,11 @@ trait SynchronousWriteReplaySupport extends Actor {
    */
   protected def stop() = {}
 
-  //
-  // EXPERIMENTAL
-  //
   private def offerSnapshot(cmd: ReplayInMsgs): ReplayInMsgs = {
-    if (cmd.withSnapshot) loadSnapshot(cmd.processorId) match {
-      case Some(s @ Snapshot(_, snr, state)) => {
+    if (cmd.withSnapshot) loadSnapshot(cmd.processorId, cmd.params.p) match {
+      case Some(s) => {
         cmd.target ! SnapshotOffer(s)
-        ReplayInMsgs(ReplayParams(cmd.processorId, snr + 1L, false), cmd.target)
+        ReplayInMsgs(ReplayParams(cmd.processorId, s.sequenceNr + 1L), cmd.target)
       }
       case None => {
         cmd

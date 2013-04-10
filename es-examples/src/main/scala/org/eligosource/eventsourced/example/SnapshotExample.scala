@@ -47,9 +47,9 @@ object SnapshotExample extends App {
         println(s"processed snapshot request for ctr = ${counter} (snr = ${snr})")
 
       }
-      case so @ SnapshotOffer(Snapshot(_, snr, ctr: Int)) => {
+      case so @ SnapshotOffer(Snapshot(_, snr, time, ctr: Int)) => {
         counter = ctr
-        println(s"accepted snapshot offer for ctr = ${counter} (snr = ${snr})")
+        println(s"accepted snapshot offer for ctr = ${counter} (snr = ${snr} time = ${time}})")
       }
     }
   }
@@ -65,10 +65,9 @@ object SnapshotExample extends App {
   setup()
   processors(1) ! Message(Increment(1))
   processors(1) ! Message(Increment(2))
-  // ordering guarantee for snapshot requests (but not for storage)
   processors(1) ? Snapshot onComplete {
-    case Success(SnapshotSaved(pid, snr)) => println(s"snapshotting succeeded: pid = ${pid} snr = ${snr}")
-    case Failure(e)                       => println("snapshotting failed: " + e)
+    case Success(SnapshotSaved(pid, snr, time)) => println(s"snapshotting succeeded: pid = ${pid} snr = ${snr} time = ${time}")
+    case Failure(e)                             => println("snapshotting failed: " + e)
   }
   processors(1) ! Message(Increment(3))
   Thread.sleep(500)
@@ -76,7 +75,6 @@ object SnapshotExample extends App {
   setup()
   extension.recover(replayParams.allWithSnapshot)
   processors(1) ! Message(Increment(1))
-  // no ordering guarantee for this snapshot request
   extension.snapshot(Set(1)) onComplete {
     case Success(_) => println("snapshotting succeeded")
     case Failure(e) => println("snapshotting failed: " + e)
@@ -86,6 +84,10 @@ object SnapshotExample extends App {
 
   setup()
   extension.recover(replayParams.allWithSnapshot)
+  Thread.sleep(500)
+
+  setup()
+  extension.recover(replayParams.allWithSnapshot(_.sequenceNr < 4L))
   Thread.sleep(500)
 
   setup()

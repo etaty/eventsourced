@@ -142,16 +142,19 @@ class EventsourcingExtension(system: ExtendedActorSystem) extends Extension {
     def allWithSnapshot: Seq[ReplayParams] =
       processors.keys.map(pid => ReplayParams(pid, withSnapshot = true)).toSeq
 
+    def allWithSnapshot(p: SnapshotMetadata => Boolean): Seq[ReplayParams] =
+      processors.keys.map(pid => ReplayParams(pid, p)).toSeq
+
     def selectedWith(f: (Int) => Option[Long]): Seq[ReplayParams] = processors.collect {
-      case (pid, p) if (f(pid).isDefined) => ReplayParams(pid, f(pid).get, false)
+      case (pid, p) if (f(pid).isDefined) => ReplayParams(pid, f(pid).get)
     } toList
   }
 
   def replay(params: Seq[ReplayParams])(implicit timeout: Timeout): Future[Any] = {
     val replays = params.foldLeft(List.empty[ReplayInMsgs]) {
-      case (acc, prop @ ReplayParams(pid, _, _)) => processors.get(pid) match {
-        case Some(proc) => ReplayInMsgs(prop, proc) :: acc
-        case None       => acc
+      case (acc, params) => processors.get(params.processorId) match {
+        case Some(p) => ReplayInMsgs(params, p) :: acc
+        case None    => acc
       }
     }
     journal ? (BatchReplayInMsgs(replays))
