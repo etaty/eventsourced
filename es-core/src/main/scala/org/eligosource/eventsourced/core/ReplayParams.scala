@@ -15,20 +15,37 @@
  */
 package org.eligosource.eventsourced.core
 
-case class ReplayParams(processorId: Int, fromSequenceNr: Long, withSnapshot: Boolean, p: SnapshotMetadata => Boolean) {
-  require(!(withSnapshot && fromSequenceNr > 0), "cannot replay with snapshot when fromSequenceNr > 0")
+sealed trait ReplayParams {
+  def processorId: Int
+  def fromSequenceNr: Long
+  def toSequenceNr: Long
+  def snapshot: Boolean
+  def snapshotFilter: SnapshotMetadata => Boolean
 }
 
 object ReplayParams {
   def apply(processorId: Int, fromSequenceNr: Long = 0L): ReplayParams =
-    ReplayParams(processorId, fromSequenceNr, false, _ => false)
+    StandardReplayParams(processorId, fromSequenceNr)
 
-  def apply(processorId: Int, p: SnapshotMetadata => Boolean): ReplayParams =
-    ReplayParams(processorId, 0L, true, p)
+  def apply(processorId: Int, snapshotFilter: SnapshotMetadata => Boolean): ReplayParams =
+    SnapshotReplayParams(processorId, snapshotFilter)
 
-  def apply(processorId: Int, withSnapshot: Boolean): ReplayParams =
-    ReplayParams(processorId, 0L, withSnapshot, _=> withSnapshot)
+  def apply(processorId: Int, snapshot: Boolean): ReplayParams =
+    SnapshotReplayParams(processorId)
+}
 
-  def apply(processorId: Int): ReplayParams =
-    apply(processorId, false)
+case class StandardReplayParams(
+  processorId: Int,
+  fromSequenceNr: Long = 0L,
+  toSequenceNr: Long = Long.MaxValue) extends ReplayParams {
+  val snapshot = false
+  def snapshotFilter = _ => false
+}
+
+case class SnapshotReplayParams(
+  processorId: Int,
+  snapshotFilter: SnapshotMetadata => Boolean = _ => true,
+  toSequenceNr: Long = Long.MaxValue) extends ReplayParams {
+  val fromSequenceNr = 0L
+  val snapshot = true
 }

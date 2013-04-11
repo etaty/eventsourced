@@ -63,9 +63,9 @@ private [eventsourced] class InmemJournal extends SynchronousWriteReplaySupport 
     replay(Int.MaxValue, cmd.channelId, cmd.fromSequenceNr, p)
   }
 
-  override def loadSnapshot(processorId: Int, p: SnapshotMetadata => Boolean) = for {
+  override def loadSnapshot(processorId: Int, snapshotFilter: SnapshotMetadata => Boolean) = for {
     ss <- snapshots.get(processorId)
-    fs <- ss.filter(p).headOption
+    fs <- ss.filter(snapshotFilter).headOption
   } yield fs
 
   override def saveSnapshot(snapshot: Snapshot) = {

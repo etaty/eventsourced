@@ -120,11 +120,11 @@ trait SynchronousWriteReplaySupport extends Actor {
   /**
    * Loads the latest snapshot for specified processor whose metadata match predicate `p`.
    *
-   * @param processorId processor id of the snapshot
-   * @param p predicate for selecting saved snapshots
+   * @param processorId processor id of the snapshot.
+   * @param snapshotFilter predicate for selecting saved snapshots.
    * @return youngest snapshots of those selected by `p`, if any.
    */
-  def loadSnapshot(processorId: Int, p: SnapshotMetadata => Boolean): Option[Snapshot] = None
+  def loadSnapshot(processorId: Int, snapshotFilter: SnapshotMetadata => Boolean): Option[Snapshot] = None
 
   /**
    * Save a snapshot.
@@ -223,7 +223,7 @@ trait SynchronousWriteReplaySupport extends Actor {
   protected def stop() = {}
 
   private def offerSnapshot(cmd: ReplayInMsgs): ReplayInMsgs = {
-    if (cmd.withSnapshot) loadSnapshot(cmd.processorId, cmd.params.p) match {
+    if (cmd.params.snapshot) loadSnapshot(cmd.processorId, cmd.params.snapshotFilter) match {
       case Some(s) => {
         cmd.target ! SnapshotOffer(s)
         ReplayInMsgs(ReplayParams(cmd.processorId, s.sequenceNr + 1L), cmd.target)

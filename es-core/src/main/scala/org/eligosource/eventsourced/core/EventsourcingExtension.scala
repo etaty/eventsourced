@@ -140,7 +140,7 @@ class EventsourcingExtension(system: ExtendedActorSystem) extends Extension {
       processors.keys.map(pid => ReplayParams(pid)).toSeq
 
     def allWithSnapshot: Seq[ReplayParams] =
-      processors.keys.map(pid => ReplayParams(pid, withSnapshot = true)).toSeq
+      processors.keys.map(pid => ReplayParams(pid, true)).toSeq
 
     def allWithSnapshot(p: SnapshotMetadata => Boolean): Seq[ReplayParams] =
       processors.keys.map(pid => ReplayParams(pid, p)).toSeq
