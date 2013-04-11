@@ -52,15 +52,15 @@ private [eventsourced] class InmemJournal extends SynchronousWriteReplaySupport 
   }
 
   def executeBatchReplayInMsgs(cmds: Seq[ReplayInMsgs], p: (Message, ActorRef) => Unit) {
-    cmds.foreach(cmd => replay(cmd.processorId, 0, cmd.fromSequenceNr, msg => p(msg, cmd.target)))
+    cmds.foreach(cmd => replay(cmd.processorId, 0, cmd.fromSequenceNr, cmd.toSequenceNr, msg => p(msg, cmd.target)))
   }
 
   def executeReplayInMsgs(cmd: ReplayInMsgs, p: Message => Unit) {
-    replay(cmd.processorId, 0, cmd.fromSequenceNr, p)
+    replay(cmd.processorId, 0, cmd.fromSequenceNr, cmd.toSequenceNr, p)
   }
 
   def executeReplayOutMsgs(cmd: ReplayOutMsgs, p: Message => Unit) {
-    replay(Int.MaxValue, cmd.channelId, cmd.fromSequenceNr, p)
+    replay(Int.MaxValue, cmd.channelId, cmd.fromSequenceNr, Long.MaxValue, p)
   }
 
   override def loadSnapshot(processorId: Int, snapshotFilter: SnapshotMetadata => Boolean) = for {
@@ -78,9 +78,10 @@ private [eventsourced] class InmemJournal extends SynchronousWriteReplaySupport 
 
   def storedCounter = counter
 
-  private def replay(processorId: Int, channelId: Int, fromSequenceNr: Long, p: Message => Unit) {
+  private def replay(processorId: Int, channelId: Int, fromSequenceNr: Long, toSequenceNr: Long, p: Message => Unit) {
     val startKey = Key(processorId, channelId, fromSequenceNr, 0)
-    val iter = redoMap.from(startKey).iterator.buffered
+    val stopKey = Key(processorId, channelId, toSequenceNr, 0)
+    val iter = redoMap.from(startKey).to(stopKey).iterator.buffered
     replay(iter, startKey, p)
   }
 

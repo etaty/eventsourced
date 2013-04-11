@@ -142,6 +142,7 @@ object Journal {
   case class ReplayInMsgs(params: ReplayParams, target: ActorRef) {
     def processorId: Int = params.processorId
     def fromSequenceNr: Long = params.fromSequenceNr
+    def toSequenceNr: Long = params.toSequenceNr
   }
 
   object ReplayInMsgs {

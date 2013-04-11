@@ -226,7 +226,7 @@ trait SynchronousWriteReplaySupport extends Actor {
     if (cmd.params.snapshot) loadSnapshot(cmd.processorId, cmd.params.snapshotFilter) match {
       case Some(s) => {
         cmd.target ! SnapshotOffer(s)
-        ReplayInMsgs(ReplayParams(cmd.processorId, s.sequenceNr + 1L), cmd.target)
+        ReplayInMsgs(ReplayParams(cmd.processorId, s.sequenceNr + 1L, cmd.toSequenceNr), cmd.target)
       }
       case None => {
         cmd
