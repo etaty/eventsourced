@@ -25,7 +25,8 @@ trait SnapshotMetadata {
 
 /** Processor state snapshot */
 case class Snapshot(processorId: Int, sequenceNr: Long, timestamp: Long, state: Any) extends SnapshotMetadata {
-  private [eventsourced] def withTimestamp: Snapshot = copy(timestamp = System.currentTimeMillis)
+  private [eventsourced] def withTimestamp(timestamp: Long): Snapshot = copy(timestamp = timestamp)
+  private [eventsourced] def withTimestamp: Snapshot = withTimestamp(System.currentTimeMillis)
 }
 
 /** Offers a snapshot to a processor during replay */
