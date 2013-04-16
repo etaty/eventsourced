@@ -39,7 +39,7 @@ import org.eligosource.eventsourced.journal.common._
  *
  *  - deletion of old entries requires full scan
  */
-private [eventsourced] class LeveldbJournalPS(props: LeveldbJournalProps) extends SynchronousWriteReplaySupport {
+private [eventsourced] class LeveldbJournalPS(val props: LeveldbJournalProps) extends SynchronousWriteReplaySupport with LeveldbSnapshotting {
   import LeveldbJournalPS._
   import Journal._
 
@@ -77,15 +77,15 @@ private [eventsourced] class LeveldbJournalPS(props: LeveldbJournalProps) extend
   }
 
   def executeBatchReplayInMsgs(cmds: Seq[ReplayInMsgs], p: (Message, ActorRef) => Unit) {
-    cmds.foreach(cmd => replay(cmd.processorId, 0, cmd.fromSequenceNr, msg => p(msg, cmd.target)))
+    cmds.foreach(cmd => replay(cmd.processorId, 0, cmd.fromSequenceNr, cmd.toSequenceNr, msg => p(msg, cmd.target)))
   }
 
   def executeReplayInMsgs(cmd: ReplayInMsgs, p: (Message) => Unit) {
-    replay(cmd.processorId, 0, cmd.fromSequenceNr, p)
+    replay(cmd.processorId, 0, cmd.fromSequenceNr, cmd.toSequenceNr, p)
   }
 
   def executeReplayOutMsgs(cmd: ReplayOutMsgs, p: (Message) => Unit) {
-    replay(Int.MaxValue, cmd.channelId, cmd.fromSequenceNr, p)
+    replay(Int.MaxValue, cmd.channelId, cmd.fromSequenceNr, Long.MaxValue, p)
   }
 
   def storedCounter = leveldb.get(CounterKeyBytes, levelDbReadOptions) match {
@@ -93,35 +93,41 @@ private [eventsourced] class LeveldbJournalPS(props: LeveldbJournalProps) extend
     case bytes => counterFromBytes(bytes)
   }
 
+  override def start() {
+    initSnapshotting()
+  }
+
   override def stop() {
     leveldb.close()
   }
 
-  def replay(processorId: Int, channelId: Int, fromSequenceNr: Long, p: Message => Unit) {
+  def replay(processorId: Int, channelId: Int, fromSequenceNr: Long, toSequenceNr: Long, p: Message => Unit) {
     val iter = leveldb.iterator(levelDbReadOptions.snapshot(leveldb.getSnapshot))
     try {
       val startKey = Key(processorId, channelId, fromSequenceNr, 0)
       iter.seek(startKey)
-      replay(iter, startKey, p)
+      replay(iter, startKey, toSequenceNr, p)
     } finally {
       iter.close()
     }
   }
 
   @scala.annotation.tailrec
-  final def replay(iter: DBIterator, key: Key, p: Message => Unit) {
+  final def replay(iter: DBIterator, key: Key, toSequenceNr: Long, p: Message => Unit) {
     if (iter.hasNext) {
       val nextEntry = iter.next()
       val nextKey = keyFromBytes(nextEntry.getKey)
-      if (nextKey.confirmingChannelId != 0) {
+      if (nextKey.sequenceNr > toSequenceNr) {
+        // end iteration here
+      } else if (nextKey.confirmingChannelId != 0) {
         // phantom ack (just advance iterator)
-        replay(iter, nextKey, p)
+        replay(iter, nextKey, toSequenceNr, p)
       } else if (key.processorId         == nextKey.processorId &&
-        key.initiatingChannelId == nextKey.initiatingChannelId) {
+                 key.initiatingChannelId == nextKey.initiatingChannelId) {
         val msg = serialization.deserializeMessage(nextEntry.getValue)
         val channelIds = confirmingChannelIds(iter, nextKey, Nil)
         p(msg.copy(acks = channelIds))
-        replay(iter, nextKey, p)
+        replay(iter, nextKey, toSequenceNr, p)
       }
     }
   }
@@ -132,8 +138,8 @@ private [eventsourced] class LeveldbJournalPS(props: LeveldbJournalProps) extend
       val nextEntry = iter.peekNext()
       val nextKey = keyFromBytes(nextEntry.getKey)
       if (key.processorId         == nextKey.processorId &&
-        key.initiatingChannelId == nextKey.initiatingChannelId &&
-        key.sequenceNr          == nextKey.sequenceNr) {
+          key.initiatingChannelId == nextKey.initiatingChannelId &&
+          key.sequenceNr          == nextKey.sequenceNr) {
         iter.next()
         confirmingChannelIds(iter, nextKey, nextKey.confirmingChannelId :: channelIds)
       } else channelIds

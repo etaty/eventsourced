@@ -33,7 +33,7 @@ case class Snapshot(processorId: Int, sequenceNr: Long, timestamp: Long, state: 
 case class SnapshotOffer(snapshot: Snapshot)
 
 /** Reply to a `Snapshot` request */
-case class SnapshotSaved(processorId: Int, sequenceNr: Long, timestamp: Long)
+case class SnapshotSaved(processorId: Int, sequenceNr: Long, timestamp: Long) extends SnapshotMetadata
 
 /** Requests a processor to provide its current state for storage */
 case class SnapshotRequest(processorId: Int, sequenceNr: Long, requestor: ActorRef) {

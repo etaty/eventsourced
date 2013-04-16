@@ -79,12 +79,16 @@ trait SynchronousWriteReplaySupport extends Actor {
     case RequestSnapshot(processorId, target) => {
       target ! SnapshotRequest(processorId, counter - 1L, sender)
     }
+    case SaveSnapshotDone(metadata, initiator) => {
+      snapshotSaved(metadata)
+      initiator ! metadata
+    }
     case SaveSnapshot(snapshot) => {
       val sdr = sender
       val snp = snapshot.withTimestamp
       saveSnapshot(snp) onComplete {
-        case Success(_) => sdr ! SnapshotSaved(snp.processorId, snp.sequenceNr, snp.timestamp)
-        case Failure(_) => // TODO
+        case Success(ss) => self ! SaveSnapshotDone(ss, sdr)
+        case Failure(_)  => // TODO
       }
     }
     case SetCommandListener(cl) => {
@@ -127,12 +131,20 @@ trait SynchronousWriteReplaySupport extends Actor {
   def loadSnapshot(processorId: Int, snapshotFilter: SnapshotMetadata => Boolean): Option[Snapshot] = None
 
   /**
-   * Save a snapshot.
+   * Saves a snapshot asynchronously.
    *
    * @param snapshot a snapshot.
    * @return a future that is completed when the snapshot has been successfully saved.
    */
-  def saveSnapshot(snapshot: Snapshot): Future[Unit] = Future.successful(())
+  def saveSnapshot(snapshot: Snapshot): Future[SnapshotSaved] =
+    Future.successful(SnapshotSaved(snapshot.processorId, snapshot.sequenceNr, snapshot.timestamp))
+
+  /**
+   * Called when a snapshot has been successfully saved.
+   *
+   * @param metadata snapshot metadata.
+   */
+  def snapshotSaved(metadata: SnapshotMetadata) {}
 
   /**
    * Instructs a journal provider to write an input message.

@@ -202,6 +202,14 @@ object Journal {
   case object DeliveryDone
 
   /**
+   * Event received by journal when a snapshot has been successfully saved.
+   *
+   * @param metadata snapshot metadata.
+   * @param initiator snapshotting initiator.
+   */
+  case class SaveSnapshotDone(metadata: SnapshotSaved, initiator: ActorRef)
+
+  /**
    * Instructs a `Journal` to forward `msg` to `target` wrapped in a
    * [[org.eligosource.eventsourced.core.Journal.Looped]] message.
    *

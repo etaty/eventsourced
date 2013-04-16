@@ -15,6 +15,8 @@
  */
 package org.eligosource.eventsourced.example
 
+import java.io.File
+
 import scala.concurrent.duration._
 import scala.util._
 
@@ -23,13 +25,14 @@ import akka.pattern.ask
 import akka.util._
 
 import org.eligosource.eventsourced.core._
-import org.eligosource.eventsourced.journal.inmem._
+import org.eligosource.eventsourced.journal.leveldb._
 
 object SnapshotExample extends App {
   implicit val system = ActorSystem("example")
   implicit val timeout = Timeout(5 seconds)
 
-  val journal: ActorRef = Journal(InmemJournalProps())
+  val journalDir: File = new File("target/snapshots")
+  val journal: ActorRef = Journal(LeveldbJournalProps(journalDir))
   val extension = EventsourcingExtension(system, journal)
 
   case class Increment(by: Int)
@@ -57,42 +60,18 @@ object SnapshotExample extends App {
   import system.dispatcher
   import extension._
 
-  def setup() {
-    println("--- setup ---")
-    processorOf(Props(new Processor with Receiver with Eventsourced { val id = 1 } ))
-  }
+  val processor = processorOf(Props(new Processor with Receiver with Eventsourced { val id = 1 } ))
 
-  setup()
-  processors(1) ! Message(Increment(1))
-  processors(1) ! Message(Increment(2))
-  processors(1) ? Snapshot onComplete {
+  extension.recover(replayParams.allWithSnapshot)
+  processor ! Message(Increment(1))
+  processor ! Message(Increment(2))
+  processor ? Snapshot onComplete {
     case Success(SnapshotSaved(pid, snr, time)) => println(s"snapshotting succeeded: pid = ${pid} snr = ${snr} time = ${time}")
-    case Failure(e)                             => println("snapshotting failed: " + e)
+    case Success(r)                             => println(s"unexpected result: ${r}")
+    case Failure(e)                             => println(s"snapshotting failed: ${e.getMessage}")
   }
-  processors(1) ! Message(Increment(3))
-  Thread.sleep(500)
+  processor ! Message(Increment(3))
 
-  setup()
-  extension.recover(replayParams.allWithSnapshot)
-  processors(1) ! Message(Increment(1))
-  extension.snapshot(Set(1)) onComplete {
-    case Success(_) => println("snapshotting succeeded")
-    case Failure(e) => println("snapshotting failed: " + e)
-  }
-  processors(1) ! Message(Increment(2))
-  Thread.sleep(500)
-
-  setup()
-  extension.recover(replayParams.allWithSnapshot)
-  Thread.sleep(500)
-
-  setup()
-  extension.recover(replayParams.allWithSnapshot(_.sequenceNr < 4L))
-  Thread.sleep(500)
-
-  setup()
-  extension.recover(replayParams.allFromScratch)
-  Thread.sleep(500)
-
+  Thread.sleep(1000)
   system.shutdown()
 }

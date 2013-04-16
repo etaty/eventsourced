@@ -53,6 +53,9 @@ import org.eligosource.eventsourced.core._
  * @param checksum `true` if checksums are verified on read. Default is `false`.
  * @param processorStructured `true` if entries are primarily ordered by processor
  *        id, `false` if entries are ordered by sequence number.  Default is `true`.
+ * @param snapshotDir Directory where the journal will store snapshots. A relative
+ *        path is relative to `dir`.
+ * @param snapshotSaveTimeout Timeout for saving a snapshot.
  */
 case class LeveldbJournalProps(
   dir: File,
@@ -60,7 +63,9 @@ case class LeveldbJournalProps(
   dispatcherName: Option[String] = None,
   fsync: Boolean = false,
   checksum: Boolean = false,
-  processorStructured: Boolean = true) extends JournalProps {
+  processorStructured: Boolean = true,
+  snapshotDir: File = new File("snapshots"),
+  snapshotSaveTimeout: FiniteDuration = 1 hour) extends JournalProps {
 
   /**
    *  Returns `false` if entries are primarily ordered by processor id,
@@ -128,6 +133,18 @@ case class LeveldbJournalProps(
    */
   def withSequenceStructure =
     copy(processorStructured = false)
+
+  /**
+   * Returns a new `LeveldbJournalProps` with specified snapshot directory.
+   */
+  def withSnapshotDir(snapshotDir: File) =
+    copy(snapshotDir = snapshotDir)
+
+  /**
+   * Returns a new `LeveldbJournalProps` with specified snapshot save timeout.
+   */
+  def withSnapshotSaveTimeout(snapshotSaveTimeout: FiniteDuration) =
+    copy(snapshotSaveTimeout = snapshotSaveTimeout)
 
   def journal: Actor = {
     if (processorStructured) {
